@@ -8,7 +8,7 @@ This project involves the development and deployment of a document detection and
 - ID Cards 
 - Driving Licenses
 - Vehicle license
-- PassCertificates
+- Pass Certificates
 - Commercial Licenses
 
 The system utilizes advanced machine learning techniques to extract relevant information from these documents and provides the extracted data in a structured JSON format.
