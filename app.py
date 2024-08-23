@@ -17,7 +17,6 @@ app = FastAPI()
 model = YOLO(r'D:/Saincube task/emirates project/front.pt')
 model_back = YOLO(r'D:/Saincube task/emirates project/back.pt')
 new_model = YOLO(r'D:/Saincube task/emirates project/certificate.pt')
-vehicle_model=YOLO("D:/Saincube task/emirates project/models/vehicle.pt")
 reader = easyocr.Reader(['en'])
 
 # Function to read image from BytesIO
@@ -79,14 +78,12 @@ def driving(img):
     }
     
     results = model.predict(conf=0.7, source=img)
-    
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
             x1, y1, x2, y2 = map(int, box)
             crop_img = img[y1:y2, x1:x2]
             dr_results = reader.readtext(crop_img)
-            
             if dr_results:
                 text = dr_results[0][1].strip().lower()
                 class_name = result.names[int(cls)].lower()
@@ -94,6 +91,7 @@ def driving(img):
                     key = class_names[class_name]
                     detected_info[key] = text
     return detected_info
+
 
 def back_driving(img):
     class_names = {
@@ -181,22 +179,24 @@ def id_back(img):
 
 def vehicle(img):
     class_names = {
-        'place of issue': 'place of issue',
-        'insurance company': 'insurance company',
+        'Insurance company': 'insurance company',
+        'vehicle license':"vehicle license"
         'reg date': 'reg date',
         'TC': 'TC',
+        'exp date':'exp date'
         'ins date': 'ins date',
         'owner': 'owner'
     }
     detected_info = {
-        "place of issue": None,
-        "insurance Company": None,
+        "Insurance Company": None,
+        "vehicle license" : None,
         "reg date": None,
+        "exp date":None,
         "TC": None,
         "ins date": None,
         "owner": None
     }
-    results = vehicle_model.predict(conf=0.7, source=img)
+    results = model.predict(conf=0.7, source=img)
     
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
@@ -313,9 +313,6 @@ def detect_document_type(img):
     back_res = model_back.predict(conf=0.5, source=img)   
     detected_back_classes = [back_res[0].names[int(cls)] for cls in back_res[0].boxes.cls.cpu().numpy()]    
     
-    veh_result=vehicle_model.predict(conf=0.5,source=img)
-    detected_vehicle=[veh_result[0].names[int(cls)] for cls in veh_result[0].boxes.cls.cpu().numpy()]
-
     certificate_doc=new_model.predict(conf=0.7, source=img)
     new_classes = [certificate_doc[0].names[int(cls)] for cls in certificate_doc[0].boxes.cls.cpu().numpy()]
     print("new classes:",new_classes)
@@ -324,8 +321,7 @@ def detect_document_type(img):
         return "front",id(img)
     elif any("licence-no" in cls for cls in detected_classes):
         return "front",driving(img)
-    
-    if any("owner " in cls  in cls for cls in detected_vehicle):
+    elif any("vehicle license" in cls  in cls for cls in detected_classes):
         return "front",vehicle(img)
     
     if any("veh type" in cls for cls in detected_back_classes):
@@ -335,7 +331,6 @@ def detect_document_type(img):
     elif any("card-number" in cls for cls in detected_back_classes):
         return "back",id_back(img)
     
-
     if any("commercial license" in cls for cls in new_classes):
         return "front", trade(img)
     elif any("test certificate" in cls for cls in new_classes):
@@ -363,7 +358,6 @@ async def upload_image(file: UploadFile = File(...)):
             },
             "data": detected_info
         }
-        
         return JSONResponse(content=response_data)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
