@@ -44,12 +44,16 @@ Response: The API returns a JSON response containing the extracted information, 
 # Installation and Setup
 
 Install Dependencies:
+
 pip install -r requirements.txt
 
 Run the Application:
+
 uvicorn app:app --reload
 
 # Directory Structure
 /models: Contains the YOLOv8 models.
+
 /app: Contains the FastAPI application code.
+
 /images: Contains input and output images.
