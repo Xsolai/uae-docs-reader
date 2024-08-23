@@ -6,11 +6,11 @@
 
 This project involves the development and deployment of a document detection and text extraction system capable of handling five different types of documents:
 
-ID Cards 
-Driving Licenses
-Vehicle Passes
-Certificates
-Commercial Licenses
+- ID Cards 
+- Driving Licenses
+- Vehicle license
+- PassCertificates
+- Commercial Licenses
 
 The system utilizes advanced machine learning techniques to extract relevant information from these documents and provides the extracted data in a structured JSON format.
 
@@ -40,5 +40,4 @@ Description: Deployed the entire document processing pipeline using FastAPI. The
 API Usage
 Endpoint: POST /upload/
 Request: Submit an image file of the document to the API.
-Response: The API returns a JSON response containing the extracted information, including metadata such as processing time and tokens used.
->>>>>>> 74ed7f2cd8c185776a879827fa351910ec95483f
+Response: The API returns a JSON response containing the extracted information, including metadata such as processing time,side of image and tokens used.
