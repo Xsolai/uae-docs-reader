@@ -1,6 +1,5 @@
 # emrites-id-reader
-<<<<<<< HEAD
-=======
+
 
 # Overview
 
