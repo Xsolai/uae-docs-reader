@@ -4,7 +4,7 @@
 
 This project involves the development and deployment of a document detection and text extraction system capable of handling five different types of documents:
 
-ID Cards
+ID Cards 
 Driving Licenses
 Vehicle Passes
 Certificates
