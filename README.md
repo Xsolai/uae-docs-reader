@@ -40,3 +40,13 @@ API Usage
 Endpoint: POST /upload/
 Request: Submit an image file of the document to the API.
 Response: The API returns a JSON response containing the extracted information, including metadata such as processing time,side of image and tokens used.
+
+# Installation and Setup
+
+Install Dependencies:
+
+pip install -r requirements.txt
+
+Run the Application:
+
+uvicorn app:app --reload
