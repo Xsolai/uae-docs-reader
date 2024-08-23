@@ -3,7 +3,7 @@ import easyocr
 import numpy as np
 from ultralytics import YOLO
 from fastapi import FastAPI, File, UploadFile
-from models import front.pt, back.pt, certificate.pt, vehicle.pt
+# from models import front.pt, back.pt, certificate.pt, vehicle.pt
 from fastapi.responses import JSONResponse
 from io import BytesIO
 import time
@@ -29,16 +29,11 @@ def read_image(file_stream: BytesIO) -> np.ndarray:
 def certificate(img):
     class_names = {
         'inspection date': 'inspection date',
-        'test certificate': 'test certificate'
-    }
-
+        'test certificate': 'test certificate'}
     detected_cert = {
         "inspection date": None,
-        "test certificate": None
-    }
-
-    results = new_model.predict(conf=0.5 source=img)
-    
+        "test certificate": None}
+    results = new_model.predict(conf=0.5, source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
@@ -65,18 +60,14 @@ def driving(img):
         'exp date': 'exp date',
         'nationality': 'nationality',
         'name': 'name',
-        'licence-no': 'licence-no'
-    }
-    
+        'licence-no': 'licence-no'}
     detected_info = {
         "issue date": None,
         "date of birth": None,
         "exp date": None,
         "nationality": None,
         "name": None,
-        "licence-no": None
-    }
-    
+        "licence-no": None}
     results = model.predict(conf=0.7, source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
@@ -95,11 +86,9 @@ def driving(img):
 
 def back_driving(img):
     class_names = {
-        'traffic code': 'traffic Code'
-    }
+        'traffic code': 'traffic Code'}
     detected_info = {
-        "traffic Code": None
-    }
+        "traffic Code": None}
     results = model_back.predict(conf=0.7, source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
@@ -121,14 +110,12 @@ def id(img):
         'name': 'Name',
         'emirates id': 'emirates ID',
         'date of birth': 'date of birth',
-        'exp date': 'exp date'
-    }
+        'exp date': 'exp date'}
     detected_info = {
         "Name": None,
         "emirates ID": None,
         "date of birth": None,
-        "exp date": None,
-    }
+        "exp date": None}
     results = model.predict(conf=0.7, source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
@@ -149,29 +136,22 @@ def id_back(img):
         'employer': 'employer',
         'occupation': 'occupation',
         'card-number': 'card-number',
-        'place of issue': 'place of issue'
-    }
+        'place of issue': 'place of issue'}
     detected_info = {
         "employer": None,
         "occupation": None,
         "card-number": None,
-        "place of issue": None
-    }
+        "place of issue": None}
     results = model_back.predict(conf=0.7, source=img)
-    
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
             x1, y1, x2, y2 = map(int, box)
             crop_img = img[y1:y2, x1:x2]
             back_id_results = reader.readtext(crop_img)
-            
             if back_id_results:
                 text = back_id_results[0][1].strip().lower()
-                # Use the class name as the key in the dictionary
                 class_name = result.names[int(cls)].lower()
-                
-                # Store the extracted text under the corresponding key
                 if class_name in class_names:
                     key = class_names[class_name]
                     detected_info[key] = text
@@ -179,25 +159,18 @@ def id_back(img):
 
 def vehicle(img):
     class_names = {
-        'Insurance company': 'insurance company',
-        'vehicle license':"vehicle license"
-        'reg date': 'reg date',
-        'TC': 'TC',
-        'exp date':'exp date'
+        'vehicle license':"vehicle license",
+        'reg date' : 'reg date',
+        'exp date':'exp date',
         'ins date': 'ins date',
-        'owner': 'owner'
-    }
+        'owner': 'owner'}
     detected_info = {
-        "Insurance Company": None,
         "vehicle license" : None,
         "reg date": None,
         "exp date":None,
-        "TC": None,
         "ins date": None,
-        "owner": None
-    }
-    results = model.predict(conf=0.7, source=img)
-    
+        "owner": None}
+    results = model.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
@@ -219,46 +192,13 @@ def back_vehic(img):
         'origin': 'origin',
         'eng no': 'eng no',
         'veh type': 'veh type'
-    }
+}
     detected_info = {
         "model": None,
         "chassis no": None,
         "origin": None,
         "eng no": None,
-        "veh type": None
-    }
-    results = model_back.predict(conf=0.7, source=img)
-    for result in results:
-        boxes = result.boxes.xyxy.cpu().numpy()
-        for box, cls in zip(boxes, result.boxes.cls):
-            x1, y1, x2, y2 = map(int, box)
-            crop_img = img[y1:y2, x1:x2]
-            back_vehicle_results = reader.readtext(crop_img)
-            if back_vehicle_results:
-                text = back_vehicle_results[0][1].strip().lower()
-                class_name = result.names[int(cls)].lower()
-                if class_name in class_names:
-                    key = class_names[class_name]
-                    detected_info[key] = text
-            else:
-                print(f"No text detected in box with class {result.names[int(cls)]}")
-    return detected_info
-
-def back_vehic(img):
-    class_names = {
-        'model': 'model',
-        'chassis no': 'chassis no',
-        'origin': 'origin',
-        'eng no': 'eng No',
-        'veh type': 'veh type'
-    }
-    detected_info = {
-        "model": None,
-        "chassis no": None,
-        "origin": None,
-        "eng no": None,
-        "veh type": None
-    }
+        "veh type": None}
     results = model_back.predict(conf=0.7, source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
@@ -280,15 +220,14 @@ def trade(img):
     class_names = {
         'trade name': 'trade name',
         'issue date': 'issue date',
-        'expiry date': 'expiry date'
-    }
+        'exp date': 'exp date',
+        "commercial license": "commercial license"}
     detected_info = {
         "trade name": None,
         "issue date": None,
-        "expiry date": None,
-        "commercial license": None
-    }
-    results = new_model.predict(conf=0.7, source=img)
+        "exp date": None,
+        "commercial license": None}
+    results = new_model.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy
         for box, cls in zip(boxes, result.boxes.cls):
@@ -306,16 +245,15 @@ def trade(img):
     return detected_info
 
 def detect_document_type(img):
-    results = model.predict(conf=0.7, source=img) 
+    results = model.predict(conf=0.4, source=img) 
     detected_classes = [results[0].names[int(cls)] for cls in results[0].boxes.cls.cpu().numpy()]
     print("detected_classes:",detected_classes)
    
     back_res = model_back.predict(conf=0.5, source=img)   
     detected_back_classes = [back_res[0].names[int(cls)] for cls in back_res[0].boxes.cls.cpu().numpy()]    
     
-    certificate_doc=new_model.predict(conf=0.7, source=img)
+    certificate_doc=new_model.predict(source=img)
     new_classes = [certificate_doc[0].names[int(cls)] for cls in certificate_doc[0].boxes.cls.cpu().numpy()]
-    print("new classes:",new_classes)
 
     if any("emirates ID" in cls for cls in detected_classes):
         return "front",id(img)
@@ -337,6 +275,7 @@ def detect_document_type(img):
         return "front", certificate(img)
     
     return {"message": "Document type not recognized"}
+
 
 @app.post("/upload/")
 async def upload_image(file: UploadFile = File(...)):
