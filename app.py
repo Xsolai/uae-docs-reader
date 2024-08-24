@@ -33,7 +33,7 @@ def certificate(img):
     detected_cert = {
         "inspection date": None,
         "test certificate": None}
-    results = new_model.predict(conf=0.5, source=img)
+    results = new_model.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
@@ -68,7 +68,7 @@ def driving(img):
         "nationality": None,
         "name": None,
         "licence-no": None}
-    results = model.predict(conf=0.7, source=img)
+    results = model.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
@@ -89,7 +89,7 @@ def back_driving(img):
         'traffic code': 'traffic Code'}
     detected_info = {
         "traffic Code": None}
-    results = model_back.predict(conf=0.7, source=img)
+    results = model_back.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
@@ -107,16 +107,16 @@ def back_driving(img):
 
 def id(img):
     class_names = {
-        'name': 'Name',
+        'name': 'name',
         'emirates id': 'emirates ID',
         'date of birth': 'date of birth',
         'exp date': 'exp date'}
     detected_info = {
-        "Name": None,
+        "name": None,
         "emirates ID": None,
         "date of birth": None,
         "exp date": None}
-    results = model.predict(conf=0.7, source=img)
+    results = model.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
@@ -142,7 +142,7 @@ def id_back(img):
         "occupation": None,
         "card-number": None,
         "place of issue": None}
-    results = model_back.predict(conf=0.7, source=img)
+    results = model_back.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
@@ -199,7 +199,7 @@ def back_vehic(img):
         "origin": None,
         "eng no": None,
         "veh type": None}
-    results = model_back.predict(conf=0.7, source=img)
+    results = model_back.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
@@ -245,11 +245,11 @@ def trade(img):
     return detected_info
 
 def detect_document_type(img):
-    results = model.predict(conf=0.4, source=img) 
+    results = model.predict(source=img) 
     detected_classes = [results[0].names[int(cls)] for cls in results[0].boxes.cls.cpu().numpy()]
     print("detected_classes:",detected_classes)
    
-    back_res = model_back.predict(conf=0.5, source=img)   
+    back_res = model_back.predict(source=img)   
     detected_back_classes = [back_res[0].names[int(cls)] for cls in back_res[0].boxes.cls.cpu().numpy()]    
     
     certificate_doc=new_model.predict(source=img)
