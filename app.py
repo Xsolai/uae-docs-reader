@@ -17,6 +17,7 @@ model = YOLO(r'models/front.pt')
 model_back = YOLO(r'models/back.pt')
 new_model = YOLO(r'models/certificate.pt')
 reader = easyocr.Reader(['en'])
+reader_vehicle=easyocr.Reader(['en','ar'])
 
 def read_image(file_stream: BytesIO) -> np.ndarray:
     file_bytes = np.asarray(bytearray(file_stream.read()), dtype=np.uint8)
@@ -101,7 +102,7 @@ def back_driving(img):
 def id(img):
     class_names = {
         'name': 'name',
-        'emirates ID': 'emirates ID',
+        'emirates id': 'emirates ID',
         'exp date': 'exp date',
         'date of birth': 'date of birth'}
     detected_info = {
@@ -152,26 +153,35 @@ def id_back(img):
 
 def vehicle(img):
     class_names = {
+        "tc":  "TC",
+        "insurance company": "Insurance company",
         'vehicle license':"vehicle license",
         'reg date' : 'reg date',
         'exp date':'exp date',
         'ins date': 'ins date',
-        'owner': 'owner'}
+        'owner': 'owner',
+        "place of issue":'place of issue',
+        "nationality":'nationality'}
     detected_info = {
         "vehicle license" : None,
         "reg date": None,
         "exp date":None,
         "ins date": None,
-        "owner": None}
+        "owner": None,
+        "Insurance company": None,
+        "TC" : None,
+        "place of issue":None,
+        "nationality":None}
     results = model.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
             x1, y1, x2, y2 = map(int, box)
             crop_img = img[y1:y2, x1:x2]
-            veh_results = reader.readtext(crop_img)
+            veh_results = reader_vehicle.readtext(crop_img)
+            print("veh results:",veh_results)
             if veh_results:
-                text = veh_results[0][1].strip().lower()
+                text = veh_results[0][1].strip()
                 class_name = result.names[int(cls)].lower()
                 if class_name in class_names:
                     key = class_names[class_name]
@@ -210,13 +220,12 @@ def trade(img):
     class_names = {
         'trade name': 'trade name',
         'issue date': 'issue date',
-        'exp date': 'exp date',
-        "commercial license": "commercial license"}
+        'exp date': 'exp date'
+        }
     detected_info = {
         "trade name": None,
         "issue date": None,
-        "exp date": None,
-        "commercial license": None}
+        "exp date": None}
     results = new_model.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy
@@ -252,7 +261,7 @@ def detect_document_type(img):
     elif any("vehicle license" in cls  in cls for cls in detected_classes):
         return "front",vehicle(img)
     
-    if any("veh type" in cls for cls in detected_back_classes):
+    if any("model" in cls for cls in detected_back_classes):
         return "back",back_vehic(img)
     elif any("traffic code" in cls for cls in detected_back_classes):
         return "back",back_driving(img)
