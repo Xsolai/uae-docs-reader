@@ -40,3 +40,23 @@ API Usage
 Endpoint: POST /upload/
 Request: Submit an image file of the document to the API.
 Response: The API returns a JSON response containing the extracted information, including metadata such as processing time,side of image and tokens used.
+
+# Installation and Setup
+
+Install Dependencies:
+
+```bash*
+pip install -r requirements.txt
+```
+
+Run the Application:
+```bash*
+uvicorn app:app --reload
+```
+
+# Directory Structure
+/models: Contains the YOLOv8 models.
+
+/app: Contains the FastAPI application code.
+
+/images: Contains input and output images.
