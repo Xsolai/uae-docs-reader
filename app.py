@@ -27,11 +27,9 @@ def read_image(file_stream: BytesIO) -> np.ndarray:
 
 def certificate(img):
     class_names = {
-        'inspection date': 'inspection date',
-        'test certificate': 'test certificate'}
+        'inspection date': 'inspection date'}
     detected_info = {
-        "inspection date": None,
-        "test certificate": None}
+        "inspection date": None}
     results = new_model.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
