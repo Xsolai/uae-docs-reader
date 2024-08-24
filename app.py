@@ -9,17 +9,15 @@ from io import BytesIO
 import time
 from datetime import datetime
 import json
-import logging
 
 app = FastAPI()
 
-# Load models and OCR reader
+
 model = YOLO(r'models/front.pt')
 model_back = YOLO(r'models/back.pt')
 new_model = YOLO(r'models/certificate.pt')
 reader = easyocr.Reader(['en'])
 
-# Function to read image from BytesIO
 def read_image(file_stream: BytesIO) -> np.ndarray:
     file_bytes = np.asarray(bytearray(file_stream.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
@@ -27,7 +25,7 @@ def read_image(file_stream: BytesIO) -> np.ndarray:
 
 
 def certificate(img):
-    certificate_names = {
+    class_names = {
         'inspection date': 'inspection date',
         'test certificate': 'test certificate'}
     detected_info = {
@@ -39,17 +37,13 @@ def certificate(img):
         for box, cls in zip(boxes, result.boxes.cls):
             x1, y1, x2, y2 = map(int, box)
             crop_img = img[y1:y2, x1:x2]
-            try:
-                pass_results = reader.readtext(crop_img)
-                print(f"pass_results:", pass_results)
-                if pass_results:
-                    text = pass_results[0][1].strip().lower()
-                    class_name = result.names[int(cls)].lower()
-                    if class_name in certificate_names:
-                        key = certificate_names[class_name]
-                        detected_info[key] = text
-            except Exception as e:
-                print(f"Error processing box: {e}")
+            pass_results = reader.readtext(crop_img)
+            if pass_results:
+                text = pass_results[0][1].strip().lower()
+                class_name = result.names[int(cls)].lower()
+                if class_name in class_names:
+                    key = class_names[class_name]
+                    detected_info[key] = text
     return detected_info
 
 
@@ -109,13 +103,13 @@ def id(img):
     class_names = {
         'name': 'name',
         'emirates ID': 'emirates ID',
-        'date of birth': 'date of birth',
-        'exp date': 'exp date'}
+        'exp date': 'exp date',
+        'date of birth': 'date of birth'}
     detected_info = {
-        "name": None,
-        "emirates ID": None,
-        "date of birth": None,
-        "exp date": None}
+        'name': None,
+        'emirates ID': None,
+        'exp date': None,
+        'date of birth': None}
     results = model.predict(source=img)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
@@ -191,8 +185,7 @@ def back_vehic(img):
         'chassis no': 'chassis no',
         'origin': 'origin',
         'eng no': 'eng no',
-        'veh type': 'veh type'
-}
+        'veh type': 'veh type'}
     detected_info = {
         "model": None,
         "chassis no": None,
@@ -212,8 +205,6 @@ def back_vehic(img):
                 if class_name in class_names:
                     key = class_names[class_name]
                     detected_info[key] = text
-            else:
-                print(f"No text detected in box with class {result.names[int(cls)]}")
     return detected_info
 
 def trade(img):
@@ -240,14 +231,13 @@ def trade(img):
                 if class_name in class_names:
                     key = class_names[class_name]
                     detected_info[key] = detected_text
-    detected_info_json = json.dumps(detected_info, indent=4)
-    print(detected_info_json)
+                else:
+                    print("no text box in class")
     return detected_info
 
 def detect_document_type(img):
     results = model.predict(source=img) 
     detected_classes = [results[0].names[int(cls)] for cls in results[0].boxes.cls.cpu().numpy()]
-    print("detected_classes:",detected_classes)
    
     back_res = model_back.predict(source=img)   
     detected_back_classes = [back_res[0].names[int(cls)] for cls in back_res[0].boxes.cls.cpu().numpy()]    
