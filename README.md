@@ -45,6 +45,7 @@ Response: The API returns a JSON response containing the extracted information, 
 
 Install Dependencies:
 
+```bash*
 pip install -r requirements.txt
 
 Run the Application:
