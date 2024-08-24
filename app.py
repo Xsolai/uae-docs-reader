@@ -37,15 +37,14 @@ def certificate(img):
         for box, cls in zip(boxes, result.boxes.cls):
             x1, y1, x2, y2 = map(int, box)
             crop_img = img[y1:y2, x1:x2]
-            pass_results = reader.readtext(crop_img)
-            if pass_results:
-                text = pass_results[0][1].strip().lower()
+            results = reader.readtext(crop_img)
+            if results:
+                text = results[0][1].strip().lower()
                 class_name = result.names[int(cls)].lower()
                 if class_name in class_names:
                     key = class_names[class_name]
                     detected_info[key] = text
     return detected_info
-
 
 def driving(img):
     class_names = {
@@ -244,6 +243,7 @@ def detect_document_type(img):
     
     certificate_doc=new_model.predict(source=img)
     new_classes = [certificate_doc[0].names[int(cls)] for cls in certificate_doc[0].boxes.cls.cpu().numpy()]
+    print("new_classes:",new_classes)
 
     if any("emirates ID" in cls for cls in detected_classes):
         return "front",id(img)
