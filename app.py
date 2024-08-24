@@ -14,9 +14,9 @@ import logging
 app = FastAPI()
 
 # Load models and OCR reader
-model = YOLO(r'D:/Saincube task/emirates project/front.pt')
-model_back = YOLO(r'D:/Saincube task/emirates project/back.pt')
-new_model = YOLO(r'D:/Saincube task/emirates project/certificate.pt')
+model = YOLO(r'models/front.pt')
+model_back = YOLO(r'models/back.pt')
+new_model = YOLO(r'models/certificate.pt')
 reader = easyocr.Reader(['en'])
 
 # Function to read image from BytesIO
@@ -27,10 +27,10 @@ def read_image(file_stream: BytesIO) -> np.ndarray:
 
 
 def certificate(img):
-    class_names = {
+    certificate_names = {
         'inspection date': 'inspection date',
         'test certificate': 'test certificate'}
-    detected_cert = {
+    detected_info = {
         "inspection date": None,
         "test certificate": None}
     results = new_model.predict(source=img)
@@ -45,12 +45,12 @@ def certificate(img):
                 if pass_results:
                     text = pass_results[0][1].strip().lower()
                     class_name = result.names[int(cls)].lower()
-                    if class_name in class_names:
-                        key = class_names[class_name]
-                        detected_cert[key] = text
+                    if class_name in certificate_names:
+                        key = certificate_names[class_name]
+                        detected_info[key] = text
             except Exception as e:
                 print(f"Error processing box: {e}")
-    return detected_cert
+    return detected_info
 
 
 def driving(img):
@@ -108,7 +108,7 @@ def back_driving(img):
 def id(img):
     class_names = {
         'name': 'name',
-        'emirates id': 'emirates ID',
+        'emirates ID': 'emirates ID',
         'date of birth': 'date of birth',
         'exp date': 'exp date'}
     detected_info = {
