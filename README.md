@@ -49,10 +49,10 @@ Install Dependencies:
 pip install -r requirements.txt
 ```
 
-
 Run the Application:
-
+```bash*
 uvicorn app:app --reload
+```
 
 # Directory Structure
 /models: Contains the YOLOv8 models.
