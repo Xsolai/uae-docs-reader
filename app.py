@@ -10,7 +10,10 @@ import time
 from datetime import datetime
 import json
 
-app = FastAPI()
+app = FastAPI(
+    title="Emirates ID Reader",
+    description="This API can extract data from Emirates ID, Driving Licence, Commercial, and Vehicle Registration."
+)
 
 
 model = YOLO(r'models/front.pt')
