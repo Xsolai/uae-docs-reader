@@ -3,12 +3,21 @@ import easyocr
 import numpy as np
 from ultralytics import YOLO
 from fastapi import FastAPI, File, UploadFile
-# from models import front.pt, back.pt, certificate.pt, vehicle.pt
 from fastapi.responses import JSONResponse
 from io import BytesIO
 import time
 from datetime import datetime
 import json
+import os
+from PIL import Image
+import uvicorn
+import fitz  # PyMuPDF
+import shutil
+import warnings
+warnings.filterwarnings("ignore")
+
+
+
 
 app = FastAPI(
     title="Emirates ID Reader",
@@ -21,6 +30,102 @@ model_back = YOLO(r'models/back.pt')
 new_model = YOLO(r'models/certificate.pt')
 reader = easyocr.Reader(['en'])
 reader_vehicle=easyocr.Reader(['en','ar'])
+
+
+
+
+
+
+# Rotation map to correct orientations
+rotation_map = {
+    '0': 0,
+    '90': 270,  # Rotating 270 degrees is equivalent to rotating -90 degrees
+    '180': 180,
+    '270': 90,  # Rotating 90 degrees is equivalent to rotating -270 degrees
+}
+
+def process_file(file_path: str, model_path: str = 'models/classification.pt'):
+    """
+    Processes the given file (PDF or image), detects objects using the YOLO model,
+    crops the detected regions, and corrects the orientation of the cropped images.
+
+    Args:
+        file_path (str): The path to the PDF or image file.
+        model_path (str): The path to the YOLO model (default: 'classification.pt').
+
+    Returns:
+        List of paths to the processed images.
+    """
+    # Load the trained YOLO model
+    model = YOLO(model_path)
+
+    # Create directories for saving cropped and oriented images
+    cropped_dir = 'cropped_images'
+    oriented_dir = 'oriented_images'
+    os.makedirs(cropped_dir, exist_ok=True)
+    os.makedirs(oriented_dir, exist_ok=True)
+
+    def process_pdf(pdf_path):
+        """Convert each page of the PDF into an image using PyMuPDF."""
+        doc = fitz.open(pdf_path)
+        image_paths = []
+        for i in range(len(doc)):
+            page = doc.load_page(i)
+            pix = page.get_pixmap()
+            img_path = f"{os.path.splitext(pdf_path)[0]}_page_{i + 1}.png"
+            pix.save(img_path)
+            image_paths.append(img_path)
+        return image_paths
+
+    def process_image(image_path):
+        """Process a single image for detection, cropping, and orientation correction."""
+        results = model(source=image_path, save=True, conf=0.5)
+        processed_images = []
+        for i, result in enumerate(results):
+            img = Image.open(result.path)
+            for j, box in enumerate(result.boxes.xyxy):
+                class_idx = int(result.boxes.cls[j].item())
+                class_name = result.names[class_idx]
+                orient = class_name.split('_')[-1]
+                xmin, ymin, xmax, ymax = map(int, box)
+                cropped_img = img.crop((xmin, ymin, xmax, ymax))
+
+                cropped_img_name = f'{class_name}_{i}_{j}_cropped.jpg'
+                cropped_img_path = os.path.join(cropped_dir, cropped_img_name)
+                cropped_img.save(cropped_img_path)
+                processed_images.append(cropped_img_path)
+
+                if orient in rotation_map:
+                    rotation_angle = rotation_map[orient]
+                    if rotation_angle != 0:
+                        cropped_img = cropped_img.rotate(rotation_angle, expand=True)
+
+                oriented_img_name = f'{class_name}_{i}_{j}_oriented.jpg'
+                oriented_img_path = os.path.join(oriented_dir, oriented_img_name)
+                cropped_img.save(oriented_img_path)
+                processed_images.append(oriented_img_path)
+
+        return processed_images
+
+    processed_files = []
+    if file_path.endswith('.pdf'):
+        image_paths = process_pdf(file_path)
+        for img_path in image_paths:
+            processed_files.extend(process_image(img_path))
+    else:
+        processed_files.extend(process_image(file_path))
+
+    return processed_files
+
+
+
+
+
+
+
+
+
+
 
 def read_image(file_stream: BytesIO) -> np.ndarray:
     file_bytes = np.asarray(bytearray(file_stream.read()), dtype=np.uint8)
@@ -281,26 +386,70 @@ def detect_document_type(img):
 async def upload_image(file: UploadFile = File(...)):
     start_time = time.time()
     try:
-        img = read_image(BytesIO(await file.read()))
-        image_height, image_width = img.shape[:2]
-        tokens_used = (image_height * image_width) // 1000
+        # Save the uploaded file temporarily
+        temp_file_path = f"temp_{file.filename}"
+        with open(temp_file_path, "wb") as buffer:
+            buffer.write(await file.read())
+        
+        # Process the file using the process_file method
+        processed_files = process_file(temp_file_path)
 
-        detected_info = detect_document_type(img)
+        # Initialize a list to hold the detected information for each image
+        image_results = []
 
+        # Filter out and process only the oriented images
+        for img_path in processed_files:
+            if "oriented_images" in img_path:  # Ensure only oriented images are processed
+                img = Image.open(img_path)
+                img = img.convert('RGB')  # Ensure the image is in RGB format
+                
+                # Convert the PIL image to numpy array if detect_document_type expects it
+                img_np = np.array(img)
+
+                # Get the image dimensions for token calculation
+                image_height, image_width = img_np.shape[:2]
+                tokens_used = (image_height * image_width) // 1000
+
+                # Detect document type
+                detected_info = detect_document_type(img_np)
+
+                # Compile the result for the current image
+                image_result = {
+                    "image_metadata": {
+                        "Image_Path": img_path,
+                        "Side": "front" if any("front" in cls for cls in detected_info) else "back",
+                        "Tokens_Used": tokens_used
+                    },
+                    "detected_data": detected_info
+                }
+
+                # Append the result to the list of image results
+                image_results.append(image_result)
+
+        # Calculate overall processing time
         processing_time = time.time() - start_time
+
+        # Compile the final response data
         response_data = {
-            "metadata": {
-                "Side": "front" if any("front" in cls for cls in detect_document_type(img)) else "back",
-                "PTime": f"{processing_time:.2f} seconds",
-                "Tokens_Used": tokens_used,
+            "overall_metadata": {
+                "Total_PTime": f"{processing_time:.2f} seconds",
+                "Total_Tokens_Used": sum(result["image_metadata"]["Tokens_Used"] for result in image_results),
                 "Timestamp": datetime.now().isoformat()
             },
-            "data": detected_info
+            "images_results": image_results
         }
+
         return JSONResponse(content=response_data)
+    
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+    
+    finally:
+        # Cleanup: Remove the temporary file
+        os.remove(temp_file_path)
+        # Optionally, clean up the cropped and oriented image directories if needed
+        shutil.rmtree('cropped_images')
+        shutil.rmtree('oriented_images')
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
