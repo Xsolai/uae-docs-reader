@@ -12,7 +12,6 @@ import os
 from PIL import Image
 import uvicorn
 import fitz  # PyMuPDF
-import shutil
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -74,6 +73,7 @@ def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped
             image_paths.append(img_path)
         return image_paths
 
+
     def process_image(image_path):
         """Process a single image for detection, cropping, and orientation correction."""
         results = model_classify(source=image_path, save=True, conf=0.5)
@@ -86,32 +86,44 @@ def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped
 
                 # Extract document type, side, and orientation from the class name
                 parts = class_name.split('_')
+                
                 if len(parts) == 3:
                     doc_type, side, orient = parts
+                    # Save cropped and oriented images with proper naming
+                    xmin, ymin, xmax, ymax = map(int, box)
+                    cropped_img = img.crop((xmin, ymin, xmax, ymax))
+                    cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_cropped.jpg'
+                    cropped_img_path = os.path.join(cropped_dir, cropped_img_name)
+                    cropped_img.save(cropped_img_path)
+                    processed_images.append(cropped_img_path)
+
+                    if orient in rotation_map:
+                        rotation_angle = rotation_map[orient]
+                        if rotation_angle != 0:
+                            cropped_img = cropped_img.rotate(rotation_angle, expand=True)
+
+                    oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_oriented.jpg'
+                    oriented_img_path = os.path.join(oriented_dir, oriented_img_name)
+                    cropped_img.save(oriented_img_path)
+                    processed_images.append(oriented_img_path)
+
                 else:
                     doc_type, orient = parts[0], parts[1]
-                    side = 'N/A'  # No side information for certificates
+                    side = 'front'  # No side information for certificates
 
-                # Save cropped and oriented images with proper naming
-                xmin, ymin, xmax, ymax = map(int, box)
-                cropped_img = img.crop((xmin, ymin, xmax, ymax))
-                cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_cropped.jpg'
-                cropped_img_path = os.path.join(cropped_dir, cropped_img_name)
-                cropped_img.save(cropped_img_path)
-                processed_images.append(cropped_img_path)
+                    # Save the image as it is in cropped_dir
+                    non_cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_non_cropped.jpg'
+                    non_cropped_img_path = os.path.join(cropped_dir, non_cropped_img_name)
+                    img.save(non_cropped_img_path)
+                    processed_images.append(non_cropped_img_path)
 
-                if orient in rotation_map:
-                    rotation_angle = rotation_map[orient]
-                    if rotation_angle != 0:
-                        cropped_img = cropped_img.rotate(rotation_angle, expand=True)
-
-                oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_oriented.jpg'
-                oriented_img_path = os.path.join(oriented_dir, oriented_img_name)
-                cropped_img.save(oriented_img_path)
-                processed_images.append(oriented_img_path)
+                    # Save the image as it is in oriented_dir (no rotation)
+                    oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_oriented.jpg'
+                    oriented_img_path = os.path.join(oriented_dir, oriented_img_name)
+                    img.save(oriented_img_path)
+                    processed_images.append(oriented_img_path)
 
         return processed_images
-
     processed_files = []
     if file_path.endswith('.pdf'):
         image_paths = process_pdf(file_path)
@@ -125,34 +137,41 @@ def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped
 
 
 
-
-
-
 def read_image(file_stream: BytesIO) -> np.ndarray:
     file_bytes = np.asarray(bytearray(file_stream.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     return img
 
 
+
 def certificate(img):
     class_names = {
-        'inspection date': 'inspection date'}
-    detected_info = {
-        "inspection date": None}
-    results = new_model.predict(source=img)
+        'inspection date': 'inspection date',
+        'trade name': 'trade name',
+        'issue date': 'issue date',
+        'exp date': 'exp date'
+    }
+    detected_info = {}
+
+    results = new_model(img, conf=0.3)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
-            x1, y1, x2, y2 = map(int, box)
+            x1, y1, x2, y2 = map(int, box[:4])
             crop_img = img[y1:y2, x1:x2]
-            results = reader.readtext(crop_img)
-            if results:
-                text = results[0][1].strip().lower()
+            text_results = reader.readtext(np.array(crop_img))
+            if text_results:
+                detected_text = text_results[0][1].strip().lower()
                 class_name = result.names[int(cls)].lower()
                 if class_name in class_names:
                     key = class_names[class_name]
-                    detected_info[key] = text
-    return detected_info
+                    detected_info[key] = detected_text
+
+    # Remove any null values from the detected_info dictionary
+    return {k: v for k, v in detected_info.items() if v is not None}
+
+
+
 
 def driving(img):
     class_names = {
@@ -169,11 +188,12 @@ def driving(img):
         "nationality": None,
         "name": None,
         "licence-no": None}
-    results = model.predict(source=img)
+    results = model.predict(img, save=True)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
-            x1, y1, x2, y2 = map(int, box)
+
+            x1, y1, x2, y2 = map(int, box[:4])
             crop_img = img[y1:y2, x1:x2]
             dr_results = reader.readtext(crop_img)
             if dr_results:
@@ -182,7 +202,9 @@ def driving(img):
                 if class_name in class_names:
                     key = class_names[class_name]
                     detected_info[key] = text
-    return detected_info
+    return {k: v for k, v in detected_info.items() if v is not None}
+
+
 
 
 def back_driving(img):
@@ -190,11 +212,11 @@ def back_driving(img):
         'traffic code': 'traffic Code'}
     detected_info = {
         "traffic Code": None}
-    results = model_back.predict(source=img)
+    results = model_back.predict(img, save=True, line_width=3)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
-            x1, y1, x2, y2 = map(int, box)
+            x1, y1, x2, y2 = map(int, box[:4])
             crop_img = img[y1:y2, x1:x2]
             back_driving_results = reader.readtext(crop_img)
             if back_driving_results:
@@ -203,7 +225,8 @@ def back_driving(img):
                 if class_name in class_names:
                     key = class_names[class_name]
                     detected_info[key] = text
-    return detected_info
+    return {k: v for k, v in detected_info.items() if v is not None}
+
 
 
 def id(img):
@@ -217,11 +240,11 @@ def id(img):
         'emirates ID': None,
         'exp date': None,
         'date of birth': None}
-    results = model.predict(source=img)
+    results = model.predict(img, save=True, line_width=3)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
-            x1, y1, x2, y2 = map(int, box)
+            x1, y1, x2, y2 = map(int, box[:4])
             crop_img = img[y1:y2, x1:x2]
             ID_results = reader.readtext(crop_img)       
             if ID_results:
@@ -230,7 +253,11 @@ def id(img):
                 if class_name in class_names:
                     key = class_names[class_name]
                     detected_info[key] = text
-    return detected_info
+                     # Remove any null values from the detected_info dictionary
+    return {k: v for k, v in detected_info.items() if v is not None}
+
+
+
 
 def id_back(img):
     class_names = {
@@ -243,11 +270,11 @@ def id_back(img):
         "occupation": None,
         "card-number": None,
         "place of issue": None}
-    results = model_back.predict(source=img)
+    results = model_back.predict(img, save=True, line_width=3)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
-            x1, y1, x2, y2 = map(int, box)
+            x1, y1, x2, y2 = map(int, box[:4])
             crop_img = img[y1:y2, x1:x2]
             back_id_results = reader.readtext(crop_img)
             if back_id_results:
@@ -256,7 +283,10 @@ def id_back(img):
                 if class_name in class_names:
                     key = class_names[class_name]
                     detected_info[key] = text
-    return detected_info
+    return {k: v for k, v in detected_info.items() if v is not None}
+
+
+
 
 def vehicle(img):
     class_names = {
@@ -277,40 +307,40 @@ def vehicle(img):
         "TC" : None,
         "place of issue":None,
         "nationality":None}
-    results = model.predict(source=img)
+    results = model.predict(img, save=True, line_width=3)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
-            x1, y1, x2, y2 = map(int, box)
+            x1, y1, x2, y2 = map(int, box[:4])
             crop_img = img[y1:y2, x1:x2]
             veh_results = reader_vehicle.readtext(crop_img)
-            print("veh results:",veh_results)
             if veh_results:
                 text = veh_results[0][1].strip()
                 class_name = result.names[int(cls)].lower()
                 if class_name in class_names:
                     key = class_names[class_name]
                     detected_info[key] = text
-    return detected_info
+    return {k: v for k, v in detected_info.items() if v is not None}
 
-def back_vehic(img):
+
+def back_vehicle(img):
     class_names = {
         'model': 'model',
         'chassis no': 'chassis no',
         'origin': 'origin',
-        'eng no': 'eng no',
+        'Eng no': 'Eng no',
         'veh type': 'veh type'}
     detected_info = {
         "model": None,
         "chassis no": None,
         "origin": None,
-        "eng no": None,
+        "Eng no": None,
         "veh type": None}
-    results = model_back.predict(source=img)
+    results = model_back.predict(img, save=True, line_width=3)
     for result in results:
         boxes = result.boxes.xyxy.cpu().numpy()
         for box, cls in zip(boxes, result.boxes.cls):
-            x1, y1, x2, y2 = map(int, box)
+            x1, y1, x2, y2 = map(int, box[:4])
             crop_img = img[y1:y2, x1:x2]
             back_vehicle_results = reader.readtext(crop_img)
             if back_vehicle_results:
@@ -321,32 +351,7 @@ def back_vehic(img):
                     detected_info[key] = text
     return detected_info
 
-def trade(img):
-    class_names = {
-        'trade name': 'trade name',
-        'issue date': 'issue date',
-        'exp date': 'exp date'
-        }
-    detected_info = {
-        "trade name": None,
-        "issue date": None,
-        "exp date": None}
-    results = new_model.predict(source=img)
-    for result in results:
-        boxes = result.boxes.xyxy
-        for box, cls in zip(boxes, result.boxes.cls):
-            x1, y1, x2, y2 = map(int, box[:4])
-            crop_img = img[y1:y2, x1:x2]
-            trades = reader.readtext(crop_img)
-            if trades:
-                detected_text = trades[0][1].strip().lower()
-                class_name = result.names[int(cls)].lower()
-                if class_name in class_names:
-                    key = class_names[class_name]
-                    detected_info[key] = detected_text
-                else:
-                    print("no text box in class")
-    return detected_info
+
 
 
 @app.post("/upload/")
@@ -393,12 +398,10 @@ async def upload_image(file: UploadFile = File(...)):
 
                 elif "vehicle" in img_path:
                     if "back" in img_path:
-                        detected_info = back_vehic(img_np)
+                        detected_info = back_vehicle(img_np)
                     else:
                         detected_info = vehicle(img_np)
 
-                elif "trade" in img_path:
-                    detected_info = trade(img_np)
                 elif "certificate" in img_path:
                     detected_info = certificate(img_np)
 
@@ -437,9 +440,6 @@ async def upload_image(file: UploadFile = File(...)):
     finally:
         # Cleanup: Remove the temporary file
         os.remove(temp_file_path)
-        # Optionally, clean up the cropped and oriented image directories if needed
-        # shutil.rmtree('cropped_images')
-        # shutil.rmtree('oriented_images')
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
