@@ -13,33 +13,6 @@ The system utilizes advanced deep learning techniques to extract relevant inform
 
 ## Workflow
 
-Start
-  |
-  v
-User uploads an image or PDF via the FastAPI endpoint
-  |
-  v
-Document Detection
-  |
-  v
-Cropping detected documents (saved in cropped_images folder)
-  |
-  v
-Orientation Adjustment (saved in oriented_images folder)
-  |
-  v
-Text Extraction using EasyOCR
-  |
-  v
-JSON Conversion of extracted data
-  |
-  v
-Response sent back to the user with extracted data and metadata
-  |
-  v
-End
-
-
 1. **Data Annotation**
    * **Tool Used** : Roboflow
    * **Description** : Annotated the document images by drawing bounding boxes around key information areas such as names, dates, and license numbers. This annotation process enables precise detection and extraction during model training.
