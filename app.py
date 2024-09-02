@@ -32,38 +32,35 @@ reader = easyocr.Reader(['en'])
 reader_vehicle=easyocr.Reader(['en','ar'])
 
 
-
-
-
-
-# Rotation map to correct orientations
-rotation_map = {
-    '0': 0,
-    '90': 270,  # Rotating 270 degrees is equivalent to rotating -90 degrees
-    '180': 180,
-    '270': 90,  # Rotating 90 degrees is equivalent to rotating -270 degrees
-}
-
-def process_file(file_path: str, model_path: str = 'models/classification.pt'):
+def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped_dir: str = 'cropped_images', oriented_dir: str = 'oriented_images'):
     """
     Processes the given file (PDF or image), detects objects using the YOLO model,
     crops the detected regions, and corrects the orientation of the cropped images.
 
     Args:
         file_path (str): The path to the PDF or image file.
-        model_path (str): The path to the YOLO model (default: 'classification.pt').
+        model_path (str): The path to the YOLO model (default: 'classify.pt').
+        cropped_dir (str): The directory to save cropped images (default: 'cropped_images').
+        oriented_dir (str): The directory to save oriented images (default: 'oriented_images').
 
     Returns:
         List of paths to the processed images.
     """
+
     # Load the trained YOLO model
-    model = YOLO(model_path)
+    model_classify = YOLO(model_path)
 
     # Create directories for saving cropped and oriented images
-    cropped_dir = 'cropped_images'
-    oriented_dir = 'oriented_images'
     os.makedirs(cropped_dir, exist_ok=True)
     os.makedirs(oriented_dir, exist_ok=True)
+
+    # Rotation map to correct orientations
+    rotation_map = {
+        '0': 0,
+        '90': 270,  # Rotating 270 degrees is equivalent to rotating -90 degrees
+        '180': 180,
+        '270': 90,  # Rotating 90 degrees is equivalent to rotating -270 degrees
+    }
 
     def process_pdf(pdf_path):
         """Convert each page of the PDF into an image using PyMuPDF."""
@@ -79,18 +76,26 @@ def process_file(file_path: str, model_path: str = 'models/classification.pt'):
 
     def process_image(image_path):
         """Process a single image for detection, cropping, and orientation correction."""
-        results = model(source=image_path, save=True, conf=0.5)
+        results = model_classify(source=image_path, save=True, conf=0.5)
         processed_images = []
         for i, result in enumerate(results):
             img = Image.open(result.path)
             for j, box in enumerate(result.boxes.xyxy):
                 class_idx = int(result.boxes.cls[j].item())
                 class_name = result.names[class_idx]
-                orient = class_name.split('_')[-1]
+
+                # Extract document type, side, and orientation from the class name
+                parts = class_name.split('_')
+                if len(parts) == 3:
+                    doc_type, side, orient = parts
+                else:
+                    doc_type, orient = parts[0], parts[1]
+                    side = 'N/A'  # No side information for certificates
+
+                # Save cropped and oriented images with proper naming
                 xmin, ymin, xmax, ymax = map(int, box)
                 cropped_img = img.crop((xmin, ymin, xmax, ymax))
-
-                cropped_img_name = f'{class_name}_{i}_{j}_cropped.jpg'
+                cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_cropped.jpg'
                 cropped_img_path = os.path.join(cropped_dir, cropped_img_name)
                 cropped_img.save(cropped_img_path)
                 processed_images.append(cropped_img_path)
@@ -100,7 +105,7 @@ def process_file(file_path: str, model_path: str = 'models/classification.pt'):
                     if rotation_angle != 0:
                         cropped_img = cropped_img.rotate(rotation_angle, expand=True)
 
-                oriented_img_name = f'{class_name}_{i}_{j}_oriented.jpg'
+                oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_oriented.jpg'
                 oriented_img_path = os.path.join(oriented_dir, oriented_img_name)
                 cropped_img.save(oriented_img_path)
                 processed_images.append(oriented_img_path)
@@ -116,10 +121,6 @@ def process_file(file_path: str, model_path: str = 'models/classification.pt'):
         processed_files.extend(process_image(file_path))
 
     return processed_files
-
-
-
-
 
 
 
@@ -261,7 +262,6 @@ def vehicle(img):
     class_names = {
         "tc":  "TC",
         "insurance company": "Insurance company",
-        'vehicle license':"vehicle license",
         'reg date' : 'reg date',
         'exp date':'exp date',
         'ins date': 'ins date',
@@ -269,7 +269,6 @@ def vehicle(img):
         "place of issue":'place of issue',
         "nationality":'nationality'}
     detected_info = {
-        "vehicle license" : None,
         "reg date": None,
         "exp date":None,
         "ins date": None,
@@ -349,38 +348,6 @@ def trade(img):
                     print("no text box in class")
     return detected_info
 
-def detect_document_type(img):
-    results = model.predict(source=img) 
-    detected_classes = [results[0].names[int(cls)] for cls in results[0].boxes.cls.cpu().numpy()]
-   
-    back_res = model_back.predict(source=img)   
-    detected_back_classes = [back_res[0].names[int(cls)] for cls in back_res[0].boxes.cls.cpu().numpy()]    
-    
-    certificate_doc=new_model.predict(source=img)
-    new_classes = [certificate_doc[0].names[int(cls)] for cls in certificate_doc[0].boxes.cls.cpu().numpy()]
-    print("new_classes:",new_classes)
-
-    if any("emirates ID" in cls for cls in detected_classes):
-        return "front",id(img)
-    elif any("licence-no" in cls for cls in detected_classes):
-        return "front",driving(img)
-    elif any("vehicle license" in cls  in cls for cls in detected_classes):
-        return "front",vehicle(img)
-    
-    if any("model" in cls for cls in detected_back_classes):
-        return "back",back_vehic(img)
-    elif any("traffic code" in cls for cls in detected_back_classes):
-        return "back",back_driving(img)
-    elif any("card-number" in cls for cls in detected_back_classes):
-        return "back",id_back(img)
-    
-    if any("commercial license" in cls for cls in new_classes):
-        return "front", trade(img)
-    elif any("test certificate" in cls for cls in new_classes):
-        return "front", certificate(img)
-    
-    return {"message": "Document type not recognized"}
-
 
 @app.post("/upload/")
 async def upload_image(file: UploadFile = File(...)):
@@ -410,14 +377,37 @@ async def upload_image(file: UploadFile = File(...)):
                 image_height, image_width = img_np.shape[:2]
                 tokens_used = (image_height * image_width) // 1000
 
-                # Detect document type
-                detected_info = detect_document_type(img_np)
+                # Detect document type with help of file name (class and side)
+                detected_info = {}
+                if "ID" in img_path:
+                    if "back" in img_path:
+                        detected_info = id_back(img_np)
+                    else:
+                        detected_info = id(img_np)
 
+                elif "Driving" in img_path:
+                    if "back" in img_path:
+                        detected_info = back_driving(img_np)
+                    else:
+                        detected_info = driving(img_np)
+
+                elif "vehicle" in img_path:
+                    if "back" in img_path:
+                        detected_info = back_vehic(img_np)
+                    else:
+                        detected_info = vehicle(img_np)
+
+                elif "trade" in img_path:
+                    detected_info = trade(img_np)
+                elif "certificate" in img_path:
+                    detected_info = certificate(img_np)
+
+        
                 # Compile the result for the current image
                 image_result = {
                     "image_metadata": {
                         "Image_Path": img_path,
-                        "Side": "front" if any("front" in cls for cls in detected_info) else "back",
+                        "side": "front" if "front" in img_path else "back",
                         "Tokens_Used": tokens_used
                     },
                     "detected_data": detected_info
@@ -448,8 +438,8 @@ async def upload_image(file: UploadFile = File(...)):
         # Cleanup: Remove the temporary file
         os.remove(temp_file_path)
         # Optionally, clean up the cropped and oriented image directories if needed
-        shutil.rmtree('cropped_images')
-        shutil.rmtree('oriented_images')
+        # shutil.rmtree('cropped_images')
+        # shutil.rmtree('oriented_images')
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
