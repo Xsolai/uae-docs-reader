@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4e54c8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8f94fb;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <style>
+    .box { fill: url(#grad1); stroke: #ffffff; stroke-width: 2; rx: 15; ry: 15; }
+    .arrow { fill: none; stroke: #ffffff; stroke-width: 2; }
+    text { font-family: Arial, sans-serif; fill: #ffffff; }
+    .title { font-size: 16px; font-weight: bold; }
+    .description { font-size: 12px; }
+    .icon { fill: #ffffff; }
+  </style>
+  
+  <!-- Background -->
+  <rect x="0" y="0" width="800" height="600" fill="#f0f0f0" />
+  
+  <!-- Step 1: Data Annotation -->
+  <g transform="translate(50, 50)">
+    <rect width="220" height="100" class="box" />
+    <text x="110" y="30" text-anchor="middle" class="title">1. Data Annotation</text>
+    <text x="110" y="50" text-anchor="middle" class="description">Tool: Roboflow</text>
+    <path d="M60 70 h100 v20 h-100 v-20 M70 60 v40 M80 60 v40 M90 60 v40" class="icon" />
+  </g>
+  
+  <!-- Step 2: Model Training -->
+  <g transform="translate(530, 50)">
+    <rect width="220" height="100" class="box" />
+    <text x="110" y="30" text-anchor="middle" class="title">2. Model Training</text>
+    <text x="110" y="50" text-anchor="middle" class="description">Model: YOLOv8</text>
+    <path d="M70 70 l40 -20 l40 20 l-40 20 z" class="icon" />
+  </g>
+  
+  <!-- Step 3: Document Detection and Cropping -->
+  <g transform="translate(50, 200)">
+    <rect width="220" height="100" class="box" />
+    <text x="110" y="30" text-anchor="middle" class="title">3. Document Detection</text>
+    <text x="110" y="50" text-anchor="middle" class="description">and Cropping</text>
+    <rect x="70" y="60" width="80" height="30" fill="none" stroke="#ffffff" stroke-width="2" />
+    <path d="M70 60 l20 -10 h80 v30 h-20" fill="none" stroke="#ffffff" stroke-width="2" />
+  </g>
+  
+  <!-- Step 4: Orientation Adjustment -->
+  <g transform="translate(530, 200)">
+    <rect width="220" height="100" class="box" />
+    <text x="110" y="30" text-anchor="middle" class="title">4. Orientation</text>
+    <text x="110" y="50" text-anchor="middle" class="description">Adjustment</text>
+    <path d="M80 80 h60 v-20 l20 20 l-20 20 v-20" class="icon" />
+  </g>
+  
+  <!-- Step 5: Text Extraction -->
+  <g transform="translate(50, 350)">
+    <rect width="220" height="100" class="box" />
+    <text x="110" y="30" text-anchor="middle" class="title">5. Text Extraction</text>
+    <text x="110" y="50" text-anchor="middle" class="description">Tool: EasyOCR</text>
+    <path d="M70 70 h80 M70 80 h60 M70 90 h70" class="icon" stroke-width="3" />
+  </g>
+  
+  <!-- Step 6: JSON Conversion -->
+  <g transform="translate(530, 350)">
+    <rect width="220" height="100" class="box" />
+    <text x="110" y="30" text-anchor="middle" class="title">6. JSON Conversion</text>
+    <text x="110" y="70" text-anchor="middle" class="description">{ "key": "value" }</text>
+  </g>
+  
+  <!-- Step 7: Deployment -->
+  <g transform="translate(290, 500)">
+    <rect width="220" height="100" class="box" />
+    <text x="110" y="30" text-anchor="middle" class="title">7. Deployment</text>
+    <text x="110" y="50" text-anchor="middle" class="description">Platform: FastAPI</text>
+    <path d="M70 70 l35 -20 l35 20 M105 50 v40" class="icon" stroke-width="3" />
+  </g>
+  
+  <!-- Arrows -->
+  <path d="M270 100 Q400 100 530 100" class="arrow" />
+  <path d="M160 150 Q160 200 160 200" class="arrow" />
+  <path d="M640 150 Q640 200 640 200" class="arrow" />
+  <path d="M270 250 Q400 250 530 250" class="arrow" />
+  <path d="M160 300 Q160 350 160 350" class="arrow" />
+  <path d="M640 300 Q640 350 640 350" class="arrow" />
+  <path d="M270 400 Q400 450 530 400" class="arrow" />
+  <path d="M400 450 Q400 500 400 500" class="arrow" />
+</svg>

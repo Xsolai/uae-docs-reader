@@ -7,11 +7,16 @@ This project involves the development and deployment of a document detection and
 * ID Cards
 * Driving Licenses
 * Vehicle Licenses
-* Certificates
+* Trade Certificates
+* Pass Certificates
 
 The system utilizes advanced deep learning techniques to extract relevant information from these documents and provides the extracted data in a structured JSON format. The system now supports both image and PDF inputs, processing them to detect and extract data from multiple documents within a single file.
 
 ## Workflow
+
+![Document workflow](workflow.svg)
+
+
 
 1. **Data Annotation**
    * **Tool Used** : Roboflow
