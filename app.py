@@ -111,6 +111,9 @@ def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped
         processed_images = []
         for i, result in enumerate(results):
             img = Image.open(result.path)
+            # Convert the image to RGB mode if it has an alpha channel
+            if img.mode == 'RGBA':
+                img = img.convert('RGB')
             for j, box in enumerate(result.boxes.xyxy):
                 class_idx = int(result.boxes.cls[j].item())
                 class_name = result.names[class_idx]
