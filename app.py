@@ -13,6 +13,7 @@ import os
 from PIL import Image
 import uvicorn
 import fitz  # PyMuPDF
+import re
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -35,6 +36,9 @@ trade_model = YOLO("models/trade.pt")
 # Load the OCR reader
 reader = easyocr.Reader(['en'])
 ar_en_reader = easyocr.Reader(['ar', 'en'])
+
+# Define a list of special characters to remove (excluding forward and backward slashes and dashes)
+special_chars = r'[!@#$%^&*()_+=\[\]{};:\'",.<>?`~]'
 
 
 # Function to classify the document, than cropped and rotated the document and send it to it's respective model
@@ -209,6 +213,7 @@ def id(img):
             ID_results = reader.readtext(crop_img)       
             if ID_results:
                 text = ID_results[0][1].strip()
+                text = re.sub(special_chars, '', text)
                 class_name = result.names[int(cls)]
                 if class_name in class_names:
                     key = class_names[class_name]
@@ -252,6 +257,7 @@ def driving(img):
             ID_results = reader.readtext(crop_img)       
             if ID_results:
                 text = ID_results[0][1].strip()
+                text = re.sub(special_chars, '', text)
                 class_name = result.names[int(cls)]
                 if class_name in class_names:
                     key = class_names[class_name]
@@ -304,6 +310,7 @@ def vehicle(img):
             veh_results = ar_en_reader.readtext(crop_img)
             if veh_results:
                 text = veh_results[0][1].strip()
+                text = re.sub(special_chars, '', text)
                 class_name = result.names[int(cls)]
                 if class_name in class_names:
                     key = class_names[class_name]
@@ -329,6 +336,7 @@ def pass_certificate(img):
             ID_results = reader.readtext(crop_img)       
             if ID_results:
                 text = ID_results[0][1].strip()
+                text = re.sub(special_chars, '', text)
                 class_name = result.names[int(cls)]
                 if class_name in class_names:
                     key = class_names[class_name]
@@ -362,6 +370,7 @@ def trade_certificate(img):
             ID_results = reader.readtext(crop_img)       
             if ID_results:
                 text = ID_results[0][1].strip()
+                text = re.sub(special_chars, '', text)
                 class_name = result.names[int(cls)]
                 if class_name in class_names:
                     key = class_names[class_name]
