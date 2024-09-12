@@ -2,11 +2,15 @@
 import cv2
 import easyocr
 import numpy as np
+import base64
 from ultralytics import YOLO
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from io import BytesIO
+from pydantic import BaseModel
+from typing import Optional
 import time
+import tempfile
 from datetime import datetime
 import json
 import os
@@ -16,6 +20,12 @@ import fitz  # PyMuPDF
 import re
 import warnings
 warnings.filterwarnings("ignore")
+
+
+# Define the model for incoming JSON data
+class FileData(BaseModel):
+    data: str
+    ext: str
 
 
 # FastAPI instance
@@ -471,6 +481,101 @@ async def upload_file(file: UploadFile = File(...)):
     finally:
         # Remove the temporary file
         os.remove(temp_file_path)
+
+
+# Add the new endpoint for processing base64 encoded data
+@app.post("/process_base64/")
+async def process_base64_file(file_data: FileData):
+    """
+    Processes a base64 encoded file (PDF or image) and extracts information from it.
+
+    Args:
+        file_data (FileData): JSON object containing base64 encoded file data and file extension.
+
+    Returns:
+        JSONResponse: The response containing the extracted information.
+    """
+    start_time = time.time()
+    
+    try:
+        # Decode the base64 data
+        file_bytes = base64.b64decode(file_data.data)
+        
+        # Create a temporary file with the correct extension
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_data.ext) as temp_file:
+            temp_file.write(file_bytes)
+            temp_file_path = temp_file.name
+
+        # Process the file using the existing process_file method
+        processed_files = process_file(temp_file_path)
+
+        # Initialize a list to hold the detected information for each image
+        image_results = []
+
+        # Filter out and process only the oriented images
+        oriented_files = [file for file in processed_files if 'oriented' in file]
+
+        # Process each oriented image
+        for oriented_file in oriented_files:
+            img = cv2.imread(oriented_file)
+            img_np = np.array(img)
+
+            image_height, image_width = img_np.shape[:2]
+            tokens_used = (image_height * image_width) // 1000
+
+            # Extract document type from the file name
+            file_name = os.path.basename(oriented_file)
+            doc_type = file_name.split('_')[0]
+
+            if 'ID' in oriented_file:
+                detected_info = id(img)
+            elif 'Driving' in oriented_file:
+                detected_info = driving(img)
+            elif 'vehicle' in oriented_file:
+                detected_info = vehicle(img)
+            elif 'pass' in oriented_file:
+                detected_info = pass_certificate(img)
+            elif 'trade' in oriented_file:
+                detected_info = trade_certificate(img)
+            else:
+                detected_info = {}
+
+            # Compile the result for the current image
+            image_result = {
+                "image_metadata": {
+                    "Image_Path": oriented_file,
+                    "Document_Type": doc_type,
+                    "side": "front" if "front" in oriented_file else "back",
+                    "Tokens_Used": tokens_used
+                },
+                "detected_data": detected_info
+            }
+
+            # Append the result to the list of image results
+            image_results.append(image_result)
+
+        # Calculate overall processing time
+        processing_time = time.time() - start_time
+
+        # Compile the final response data
+        response_data = {
+            "overall_metadata": {
+                "Total_PTime": f"{processing_time:.2f} seconds",
+                "Total_Tokens_Used": sum([result['image_metadata']['Tokens_Used'] for result in image_results]),
+                "Timestamp": datetime.now().isoformat()
+            },
+            "images_results": image_results
+        }
+
+        return JSONResponse(content=response_data)
+
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+    finally:
+        # Remove the temporary file
+        if 'temp_file_path' in locals():
+            os.remove(temp_file_path)
 
 # Run the FastAPI server
 if __name__ == "__main__":
