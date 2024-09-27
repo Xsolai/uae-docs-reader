@@ -131,6 +131,8 @@ def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped
             for j, box in enumerate(result.boxes.xyxy):
                 class_idx = int(result.boxes.cls[j].item())
                 class_name = result.names[class_idx]
+                confidence = result.boxes.conf[j].item()
+                confidence = round(confidence, 2)
 
                 # Extract document type, side, and orientation from the class name
                 parts = class_name.split('_')
@@ -140,7 +142,7 @@ def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped
                     # Save cropped and oriented images with proper naming
                     xmin, ymin, xmax, ymax = map(int, box)
                     cropped_img = img.crop((xmin, ymin, xmax, ymax))
-                    cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_cropped.jpg'
+                    cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_{confidence}_cropped.jpg'
                     cropped_img_path = os.path.join(cropped_dir, cropped_img_name)
                     cropped_img.save(cropped_img_path)
                     processed_images.append(cropped_img_path)
@@ -150,7 +152,7 @@ def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped
                         if rotation_angle != 0:
                             cropped_img = cropped_img.rotate(rotation_angle, expand=True)
 
-                    oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_oriented.jpg'
+                    oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_{confidence}_oriented.jpg'
                     oriented_img_path = os.path.join(oriented_dir, oriented_img_name)
                     cropped_img.save(oriented_img_path)
                     processed_images.append(oriented_img_path)
@@ -160,14 +162,14 @@ def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped
                     side = 'front'  # No side information for certificates
 
                     # Save the image as it is in cropped_dir
-                    non_cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_non_cropped.jpg'
+                    non_cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_{confidence}_non_cropped.jpg'
                     non_cropped_img_path = os.path.join(cropped_dir, non_cropped_img_name)
                     img.save(non_cropped_img_path)
                     processed_images.append(non_cropped_img_path)
                     
                     
                     # Save the image as it is in oriented_dir (no rotation)
-                    oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_oriented.jpg'
+                    oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_{confidence}_oriented.jpg'
                     oriented_img_path = os.path.join(oriented_dir, oriented_img_name)
                     img.save(oriented_img_path)
                     processed_images.append(oriented_img_path)
@@ -199,7 +201,8 @@ def id(img):
         'Employer': 'Employer',
         'Occupation': 'Occupation',
         'Place of issue': 'Place of issue',
-        'Issue Date' : 'Issue Date'
+        'Issue Date' : 'Issue Date',
+        'confidence': 'confidence'
         }
     detected_info = {
         'Name': None,
@@ -211,7 +214,8 @@ def id(img):
         'Employer': None,
         'Occupation': None,
         'Place of issue': None,
-        'Issue Date': None
+        'Issue Date': None,
+        'confidence': None
     }
     results = id_model.predict(img, line_width=2)
     for result in results:
@@ -429,6 +433,7 @@ async def upload_file(file: UploadFile = File(...)):
             # Extract document type from the file name
             file_name = os.path.basename(oriented_file)
             doc_type = file_name.split('_')[0]
+            confidence = file_name.split('_')[-2]
 
             # enhanced the image for better results
             # img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
@@ -451,6 +456,7 @@ async def upload_file(file: UploadFile = File(...)):
                 "image_metadata": {
                     "Image_Path": oriented_file,
                     "Document_Type": doc_type,
+                    "Confidence_score": confidence,
                     "side": "front" if "front" in oriented_file else "back",
                     "Tokens_Used": tokens_used
                 },
@@ -526,6 +532,7 @@ async def process_base64_file(file_data: FileData):
             # Extract document type from the file name
             file_name = os.path.basename(oriented_file)
             doc_type = file_name.split('_')[0]
+            confidence = file_name.split('_')[-2]
 
             if 'ID' in oriented_file:
                 detected_info = id(img)
@@ -545,6 +552,7 @@ async def process_base64_file(file_data: FileData):
                 "image_metadata": {
                     "Image_Path": oriented_file,
                     "Document_Type": doc_type,
+                    "Confidence_score": confidence,
                     "side": "front" if "front" in oriented_file else "back",
                     "Tokens_Used": tokens_used
                 },
