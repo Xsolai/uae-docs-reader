@@ -29,6 +29,10 @@ class FileData(BaseModel):
     data: str
     ext: str
 
+# Pydantic model for the request body
+class Base64Request(BaseModel):
+    data: str
+    extension: str
 
 # FastAPI instance
 app = FastAPI(
@@ -883,6 +887,121 @@ async def upload_file(file: UploadFile = File(...)):
     finally:
         # Remove the temporary file
         os.remove(temp_file_path)
+
+
+
+
+@app.post("/upload/base64/")
+async def upload_base64(request: Base64Request):
+    """
+    Accepts base64 encoded file data and processes it using the YOLO model.
+    
+    Args:
+        request (Base64Request): Contains base64 encoded data and file extension
+            - data: Base64 encoded string of the file
+            - extension: File extension (e.g., 'pdf', 'jpg', 'png')
+            
+    Returns:
+        JSONResponse: The response containing the paths to the processed images
+    """
+    start_time = time.time()
+    try:
+        # Save the base64 encoded data to a temporary file
+        temp_file_path = f"temp_base64.{request.extension}"
+        with open(temp_file_path, "wb") as buffer:
+            buffer.write(base64.b64decode(request.data))
+
+        # Process the file using the process_file method
+        processed_files = process_file(temp_file_path)
+
+        # Initialize a list to hold the detected information for each image
+        image_results = []
+
+        # Filter out and process only the oriented images
+        oriented_files = [file for file in processed_files if 'oriented' in file]
+
+        # Process each oriented image
+        for oriented_file in oriented_files:
+            img = cv2.imread(oriented_file)
+            img_np = np.array(img)
+
+            image_height, image_width = img_np.shape[:2]
+            tokens_used = (image_height * image_width) // 1000
+
+            # Extract document type from the file name
+            file_name = os.path.basename(oriented_file)
+            doc_type = file_name.split('_')[0]
+            confidence = file_name.split('_')[-2]
+
+            # enhanced the image for better results
+            # img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+            if 'ID' in oriented_file:
+                if 'front' in oriented_file:
+                    detected_info = id_front(oriented_file)
+                else:
+                    detected_info = id_back(oriented_file)
+                
+            elif 'Driving' in oriented_file:
+                if 'front' in oriented_file:
+                    detected_info = driving_front(oriented_file)
+                else:
+                    detected_info = driving_back(oriented_file)
+                
+            elif 'vehicle' in oriented_file:
+                if 'front' in oriented_file:
+                    detected_info = vehicle_front(oriented_file)
+                else:
+                    detected_info = vehicle_back(oriented_file)
+             
+            elif 'pass' in oriented_file:
+                detected_info = pass_certificate(oriented_file)
+
+            elif 'trade' in oriented_file:
+                detected_info = trade_certificate(oriented_file)
+            else:
+                detected_info = {}
+
+            # Compile the result for the current image
+            image_result = {
+                "image_metadata": {
+                    "Image_Path": oriented_file,
+                    "Document_Type": doc_type,
+                    "Confidence_score": confidence,
+                    "side": "front" if "front" in oriented_file else "back",
+                    "Tokens_Used": tokens_used
+                },
+                "detected_data": detected_info
+            }
+
+            # Append the result to the list of image results
+            image_results.append(image_result)
+
+        # Calculate overall processing time
+        processing_time = time.time() - start_time
+
+        # Compile the final response data
+        response_data = {
+            "overall_metadata": {
+                "Total_PTime": f"{processing_time:.2f} seconds",
+                "Total_Tokens_Used": sum([result['image_metadata']['Tokens_Used'] for result in image_results]),
+                "Timestamp": datetime.now().isoformat()
+            },
+            "images_results": image_results
+        }
+
+        return JSONResponse(content=response_data)
+    
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+    
+    finally:
+        # Remove the temporary file
+        os.remove(temp_file_path)
+
+
+
+
 
 
 # Run the FastAPI server
