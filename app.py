@@ -113,7 +113,7 @@ def process_file(file_path: str, model_path: str = 'models/classify.pt', cropped
 
     def process_image(image_path):
         """Process a single image for detection, cropping, and orientation correction."""
-        results = model_classify(source=image_path, save=True, conf=0.5)
+        results = model_classify(source=image_path, save=True, conf=0.55)
         processed_images = []
         for i, result in enumerate(results):
             img = Image.open(result.path)
@@ -780,12 +780,12 @@ def trade_certificate(img_path):
 
 
 
-# Upload endpoint for processing the uploaded file
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
     """
     Uploads a file (PDF or image) and processes it to detect objects using the YOLO model,
     crops the detected regions, and corrects the orientation of the cropped images.
+    For multiple detections of the same document type, only the one with highest confidence is processed.
 
     Args:
         file (UploadFile): The file to upload.
@@ -803,28 +803,62 @@ async def upload_file(file: UploadFile = File(...)):
         # Process the file using the process_file method
         processed_files = process_file(temp_file_path)
 
-        # Initialize a list to hold the detected information for each image
-        image_results = []
-
-        # Filter out and process only the oriented images
+        # Filter out only the oriented images
         oriented_files = [file for file in processed_files if 'oriented' in file]
 
-        # Process each oriented image
+        # Group oriented files by document type and side, keeping only highest confidence
+        grouped_files = {}
         for oriented_file in oriented_files:
+            file_name = os.path.basename(oriented_file)
+            parts = file_name.split('_')
+            
+            # Extract document info from filename
+            doc_type = parts[0]
+            if len(parts) >= 3:  # Standard document with side info
+                side = parts[1]
+                orient = parts[2]
+                try:
+                    confidence = float(parts[-2])
+                except ValueError:
+                    # Handle case where confidence might not be correctly formatted
+                    confidence = 0.0
+            else:  # Handle documents without side info (certificates)
+                side = 'front'
+                try:
+                    confidence = float(parts[-2])
+                except ValueError:
+                    confidence = 0.0
+                    
+            # Create a key to group by document type and side
+            image_key = f"{doc_type}_{side}"
+            
+            # Keep only the file with highest confidence for each document type and side
+            if image_key not in grouped_files or confidence > grouped_files[image_key]['confidence']:
+                grouped_files[image_key] = {
+                    'file_path': oriented_file,
+                    'confidence': confidence
+                }
+
+        # Initialize results list
+        image_results = []
+
+        # Process only the highest confidence detection for each document type and side
+        for image_key, image_data in grouped_files.items():
+            oriented_file = image_data['file_path']
+            
+            # Read the image and calculate token usage
             img = cv2.imread(oriented_file)
             img_np = np.array(img)
-
+            
             image_height, image_width = img_np.shape[:2]
             tokens_used = (image_height * image_width) // 1000
-
-            # Extract document type from the file name
+            
+            # Extract document info from filename
             file_name = os.path.basename(oriented_file)
             doc_type = file_name.split('_')[0]
-            confidence = file_name.split('_')[-2]
-
-            # enhanced the image for better results
-            # img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-
+            confidence = str(image_data['confidence'])
+            
+            # Process based on document type
             if 'ID' in oriented_file:
                 if 'front' in oriented_file:
                     detected_info = id_front(oriented_file)
@@ -874,6 +908,7 @@ async def upload_file(file: UploadFile = File(...)):
             "overall_metadata": {
                 "Total_PTime": f"{processing_time:.2f} seconds",
                 "Total_Tokens_Used": sum([result['image_metadata']['Tokens_Used'] for result in image_results]),
+                "Images_Processed": len(image_results),
                 "Timestamp": datetime.now().isoformat()
             },
             "images_results": image_results
@@ -885,9 +920,9 @@ async def upload_file(file: UploadFile = File(...)):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
     finally:
-        # Remove the temporary file
-        os.remove(temp_file_path)
-
+        # Clean up temporary files
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
 
 
@@ -895,6 +930,7 @@ async def upload_file(file: UploadFile = File(...)):
 async def upload_base64(request: Base64Request):
     """
     Accepts base64 encoded file data and processes it using the YOLO model.
+    For multiple detections of the same document type, only the one with highest confidence is processed.
     
     Args:
         request (Base64Request): Contains base64 encoded data and file extension
@@ -914,28 +950,62 @@ async def upload_base64(request: Base64Request):
         # Process the file using the process_file method
         processed_files = process_file(temp_file_path)
 
-        # Initialize a list to hold the detected information for each image
-        image_results = []
-
-        # Filter out and process only the oriented images
+        # Filter out only the oriented images
         oriented_files = [file for file in processed_files if 'oriented' in file]
 
-        # Process each oriented image
+        # Group oriented files by document type and side, keeping only highest confidence
+        grouped_files = {}
         for oriented_file in oriented_files:
+            file_name = os.path.basename(oriented_file)
+            parts = file_name.split('_')
+            
+            # Extract document info from filename
+            doc_type = parts[0]
+            if len(parts) >= 3:  # Standard document with side info
+                side = parts[1]
+                orient = parts[2]
+                try:
+                    confidence = float(parts[-2])
+                except ValueError:
+                    # Handle case where confidence might not be correctly formatted
+                    confidence = 0.0
+            else:  # Handle documents without side info (certificates)
+                side = 'front'
+                try:
+                    confidence = float(parts[-2])
+                except ValueError:
+                    confidence = 0.0
+                    
+            # Create a key to group by document type and side
+            image_key = f"{doc_type}_{side}"
+            
+            # Keep only the file with highest confidence for each document type and side
+            if image_key not in grouped_files or confidence > grouped_files[image_key]['confidence']:
+                grouped_files[image_key] = {
+                    'file_path': oriented_file,
+                    'confidence': confidence
+                }
+
+        # Initialize results list
+        image_results = []
+
+        # Process only the highest confidence detection for each document type and side
+        for image_key, image_data in grouped_files.items():
+            oriented_file = image_data['file_path']
+            
+            # Read the image and calculate token usage
             img = cv2.imread(oriented_file)
             img_np = np.array(img)
-
+            
             image_height, image_width = img_np.shape[:2]
             tokens_used = (image_height * image_width) // 1000
-
-            # Extract document type from the file name
+            
+            # Extract document info from filename
             file_name = os.path.basename(oriented_file)
             doc_type = file_name.split('_')[0]
-            confidence = file_name.split('_')[-2]
-
-            # enhanced the image for better results
-            # img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-
+            confidence = str(image_data['confidence'])
+            
+            # Process based on document type
             if 'ID' in oriented_file:
                 if 'front' in oriented_file:
                     detected_info = id_front(oriented_file)
@@ -985,6 +1055,7 @@ async def upload_base64(request: Base64Request):
             "overall_metadata": {
                 "Total_PTime": f"{processing_time:.2f} seconds",
                 "Total_Tokens_Used": sum([result['image_metadata']['Tokens_Used'] for result in image_results]),
+                "Images_Processed": len(image_results),
                 "Timestamp": datetime.now().isoformat()
             },
             "images_results": image_results
@@ -996,8 +1067,9 @@ async def upload_base64(request: Base64Request):
         return JSONResponse(content={"error": str(e)}, status_code=500)
     
     finally:
-        # Remove the temporary file
-        os.remove(temp_file_path)
+        # Clean up temporary files
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
 
 
