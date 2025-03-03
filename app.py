@@ -20,6 +20,8 @@ import fitz  # PyMuPDF
 import re
 import together
 from dotenv import load_dotenv
+import uuid
+import io
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -41,6 +43,7 @@ app = FastAPI(
 )
 
 load_dotenv()
+
 
 
 # Function to classify the document, than cropped and rotated the document and send it to it's respective model
@@ -935,23 +938,91 @@ async def upload_base64(request: Base64Request):
     Args:
         request (Base64Request): Contains base64 encoded data and file extension
             - data: Base64 encoded string of the file
-            - extension: File extension (e.g., 'pdf', 'jpg', 'png')
+            - extension: File extension (e.g., 'pdf', 'jpg', 'png', 'jpeg', 'jfif')
             
     Returns:
         JSONResponse: The response containing the paths to the processed images
     """
     start_time = time.time()
+    temp_file_path = None
+    processed_files = []
+    debug_file_path = None
+    
     try:
-        # Save the base64 encoded data to a temporary file
-        temp_file_path = f"temp_base64.{request.extension}"
-        with open(temp_file_path, "wb") as buffer:
-            buffer.write(base64.b64decode(request.data))
-
-        # Process the file using the process_file method
-        processed_files = process_file(temp_file_path)
-
+        # Clean the base64 string before decoding
+        cleaned_data = request.data.strip()
+        
+        # If it includes a data URI prefix, strip it
+        if ',' in cleaned_data and ';base64,' in cleaned_data:
+            # Extract the base64 part after the comma
+            cleaned_data = cleaned_data.split(',')[1]
+        
+        # Validate extension
+        ext = request.extension.lower()
+        if ext not in ['pdf', 'png', 'jpg', 'jpeg', 'jfif']:
+            return JSONResponse(
+                content={"error": f"Unsupported file extension: {ext}"},
+                status_code=400
+            )
+        
+        # Decode the base64 data
+        try:
+            # Add padding if needed
+            missing_padding = len(cleaned_data) % 4
+            if missing_padding:
+                cleaned_data += '=' * (4 - missing_padding)
+                
+            decoded_data = base64.b64decode(cleaned_data)
+        except Exception as e:
+            return JSONResponse(
+                content={"error": f"Invalid base64 data: {str(e)}"},
+                status_code=400
+            )
+        
+        # Generate file paths with UUID to prevent collisions
+        file_id = uuid.uuid4()
+        temp_file_path = f"temp_base64_{file_id}.{ext}"
+        debug_file_path = f"debug_base64_{file_id}.{ext}"
+        
+        # For image formats, use PIL to standardize the image before saving
+        if ext in ['png', 'jpg', 'jpeg', 'jfif']:
+            try:
+                # Load image directly from bytes
+                img = Image.open(io.BytesIO(decoded_data))
+                
+                # Convert to RGB if needed
+                if img.mode == 'RGBA':
+                    img = img.convert('RGB')
+                
+                # Save as standard format
+                img.save(temp_file_path, format="JPEG" if ext in ['jpg', 'jpeg', 'jfif'] else "PNG")
+                
+                # Save debug copy
+                img.save(debug_file_path, format="JPEG" if ext in ['jpg', 'jpeg', 'jfif'] else "PNG")
+            except Exception:
+                # Fall back to direct file writing
+                with open(temp_file_path, "wb") as buffer:
+                    buffer.write(decoded_data)
+                with open(debug_file_path, "wb") as buffer:
+                    buffer.write(decoded_data)
+        else:
+            # For PDFs, just write the file directly
+            with open(temp_file_path, "wb") as buffer:
+                buffer.write(decoded_data)
+            with open(debug_file_path, "wb") as buffer:
+                buffer.write(decoded_data)
+        
+        # Process the file using the enhanced process_file method
+        processed_files = process_file_with_checks(temp_file_path)
+        
         # Filter out only the oriented images
         oriented_files = [file for file in processed_files if 'oriented' in file]
+        
+        if not oriented_files:
+            return JSONResponse(
+                content={"error": "No valid document detected in the image"},
+                status_code=400
+            )
 
         # Group oriented files by document type and side, keeping only highest confidence
         grouped_files = {}
@@ -963,17 +1034,16 @@ async def upload_base64(request: Base64Request):
             doc_type = parts[0]
             if len(parts) >= 3:  # Standard document with side info
                 side = parts[1]
-                orient = parts[2]
                 try:
                     confidence = float(parts[-2])
-                except ValueError:
+                except (ValueError, IndexError):
                     # Handle case where confidence might not be correctly formatted
                     confidence = 0.0
             else:  # Handle documents without side info (certificates)
                 side = 'front'
                 try:
                     confidence = float(parts[-2])
-                except ValueError:
+                except (ValueError, IndexError):
                     confidence = 0.0
                     
             # Create a key to group by document type and side
@@ -995,6 +1065,9 @@ async def upload_base64(request: Base64Request):
             
             # Read the image and calculate token usage
             img = cv2.imread(oriented_file)
+            if img is None:
+                continue
+                
             img_np = np.array(img)
             
             image_height, image_width = img_np.shape[:2]
@@ -1005,32 +1078,35 @@ async def upload_base64(request: Base64Request):
             doc_type = file_name.split('_')[0]
             confidence = str(image_data['confidence'])
             
-            # Process based on document type
-            if 'ID' in oriented_file:
-                if 'front' in oriented_file:
-                    detected_info = id_front(oriented_file)
-                else:
-                    detected_info = id_back(oriented_file)
-                
-            elif 'Driving' in oriented_file:
-                if 'front' in oriented_file:
-                    detected_info = driving_front(oriented_file)
-                else:
-                    detected_info = driving_back(oriented_file)
-                
-            elif 'vehicle' in oriented_file:
-                if 'front' in oriented_file:
-                    detected_info = vehicle_front(oriented_file)
-                else:
-                    detected_info = vehicle_back(oriented_file)
-             
-            elif 'pass' in oriented_file:
-                detected_info = pass_certificate(oriented_file)
+            try:
+                # Process based on document type
+                if 'ID' in oriented_file:
+                    if 'front' in oriented_file:
+                        detected_info = id_front(oriented_file)
+                    else:
+                        detected_info = id_back(oriented_file)
+                    
+                elif 'Driving' in oriented_file:
+                    if 'front' in oriented_file:
+                        detected_info = driving_front(oriented_file)
+                    else:
+                        detected_info = driving_back(oriented_file)
+                    
+                elif 'vehicle' in oriented_file:
+                    if 'front' in oriented_file:
+                        detected_info = vehicle_front(oriented_file)
+                    else:
+                        detected_info = vehicle_back(oriented_file)
+                 
+                elif 'pass' in oriented_file:
+                    detected_info = pass_certificate(oriented_file)
 
-            elif 'trade' in oriented_file:
-                detected_info = trade_certificate(oriented_file)
-            else:
-                detected_info = {}
+                elif 'trade' in oriented_file:
+                    detected_info = trade_certificate(oriented_file)
+                else:
+                    detected_info = {}
+            except Exception as proc_error:
+                detected_info = {"error": str(proc_error)}
 
             # Compile the result for the current image
             image_result = {
@@ -1064,14 +1140,173 @@ async def upload_base64(request: Base64Request):
         return JSONResponse(content=response_data)
     
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        import traceback
+        error_details = traceback.format_exc()
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
     
     finally:
         # Clean up temporary files
-        if os.path.exists(temp_file_path):
+        if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
+        if debug_file_path and os.path.exists(debug_file_path):
+            os.remove(debug_file_path)
+        
+        # Clean up any processed files that might remain
+        try:
+            for file_path in processed_files:
+                if os.path.exists(file_path) and 'oriented' not in file_path:
+                    os.remove(file_path)
+        except:
+            pass
 
 
+
+# Add this new function to handle the file processing with additional checks
+def process_file_with_checks(file_path: str, model_path: str = 'models/classify.pt', cropped_dir: str = 'cropped_images', oriented_dir: str = 'oriented_images'):
+    """Enhanced version of process_file that ensures proper coordinate handling"""
+    
+    # Load the trained YOLO model
+    model_classify = YOLO(model_path)
+
+    # Create directories for saving cropped and oriented images
+    os.makedirs(cropped_dir, exist_ok=True)
+    os.makedirs(oriented_dir, exist_ok=True)
+
+    # Rotation map to correct orientations
+    rotation_map = {
+        '0': 0,
+        '90': 270,
+        '180': 180,
+        '270': 90,
+    }
+
+    def process_pdf(pdf_path, dpi=300):
+        """Process PDF the same as the original function"""
+        doc = fitz.open(pdf_path)
+        image_paths = []
+        
+        for i in range(len(doc)):
+            page = doc[i]
+            zoom = dpi / 72
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            img_path = f"{os.path.splitext(pdf_path)[0]}_page_{i + 1}.png"
+            img.save(img_path, format="PNG", dpi=(dpi, dpi), quality=95)
+            image_paths.append(img_path)
+        
+        doc.close()
+        return image_paths
+
+    def process_image(image_path):
+        """Enhanced process_image function with better coordinate handling"""
+        # Load image with PIL first to get dimensions
+        try:
+            pil_img = Image.open(image_path)
+            pil_img.close()
+        except Exception:
+            pass
+        
+        # Run YOLO detection
+        results = model_classify(source=image_path, save=True, conf=0.55)
+        processed_images = []
+        
+        for i, result in enumerate(results):
+            # Load the result image with PIL
+            img = Image.open(result.path)
+            
+            # Convert the image to RGB mode if it has an alpha channel
+            if img.mode == 'RGBA':
+                img = img.convert('RGB')
+                
+            # Process each bounding box
+            for j, box in enumerate(result.boxes.xyxy):
+                class_idx = int(result.boxes.cls[j].item())
+                class_name = result.names[class_idx]
+                confidence = result.boxes.conf[j].item()
+                confidence = round(confidence, 2)
+                
+                # Extract document type, side, and orientation from the class name
+                parts = class_name.split('_')
+                
+                # Extract and validate box coordinates
+                xmin, ymin, xmax, ymax = map(float, box)
+                
+                # Ensure coordinates are valid
+                if xmin >= xmax or ymin >= ymax:
+                    continue
+                    
+                # Convert to integers for cropping
+                xmin, ymin, xmax, ymax = map(int, [xmin, ymin, xmax, ymax])
+                
+                if len(parts) == 3:
+                    doc_type, side, orient = parts
+                    # Crop image - CRITICAL: Make a copy of the image first
+                    img_copy = img.copy()
+                    try:
+                        # Ensure coordinates are within image bounds
+                        xmin = max(0, xmin)
+                        ymin = max(0, ymin)
+                        xmax = min(img.width, xmax)
+                        ymax = min(img.height, ymax)
+                        
+                        # Ensure box has minimum size
+                        if xmax - xmin < 10 or ymax - ymin < 10:
+                            continue
+                            
+                        cropped_img = img_copy.crop((xmin, ymin, xmax, ymax))
+                    except Exception:
+                        continue
+                        
+                    # Save cropped image
+                    cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_{confidence}_cropped.jpg'
+                    cropped_img_path = os.path.join(cropped_dir, cropped_img_name)
+                    cropped_img.save(cropped_img_path)
+                    processed_images.append(cropped_img_path)
+                    
+                    # Handle rotation
+                    if orient in rotation_map:
+                        rotation_angle = rotation_map[orient]
+                        if rotation_angle != 0:
+                            cropped_img = cropped_img.rotate(rotation_angle, expand=True)
+                    
+                    # Save oriented image
+                    oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_{confidence}_oriented.jpg'
+                    oriented_img_path = os.path.join(oriented_dir, oriented_img_name)
+                    cropped_img.save(oriented_img_path)
+                    processed_images.append(oriented_img_path)
+                    
+                else:
+                    doc_type, orient = parts[0], parts[1]
+                    side = 'front'  # No side information for certificates
+                    
+                    # For certificates, just save the whole image
+                    img_copy = img.copy()
+                    non_cropped_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_{confidence}_non_cropped.jpg'
+                    non_cropped_img_path = os.path.join(cropped_dir, non_cropped_img_name)
+                    img_copy.save(non_cropped_img_path)
+                    processed_images.append(non_cropped_img_path)
+                    
+                    # Save oriented copy
+                    oriented_img_name = f'{doc_type}_{side}_{orient}_{i}_{j}_{confidence}_oriented.jpg'
+                    oriented_img_path = os.path.join(oriented_dir, oriented_img_name)
+                    img_copy.save(oriented_img_path)
+                    processed_images.append(oriented_img_path)
+
+        return processed_images
+
+    processed_files = []
+    if file_path.endswith('.pdf'):
+        image_paths = process_pdf(file_path)
+        for img_path in image_paths:
+            processed_files.extend(process_image(img_path))
+    else:
+        processed_files.extend(process_image(file_path))
+
+    return processed_files
 
 
 
